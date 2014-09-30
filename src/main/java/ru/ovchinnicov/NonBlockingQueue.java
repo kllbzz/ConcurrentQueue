@@ -12,8 +12,7 @@ class NonBlockingQueue<T> implements Queue<T> {
     private AtomicReference<State<T>> state;
     {
        Node<T> head = new Node(null);
-       Node<T> tail = head.get();
-       state = new AtomicReference<State<T>>(new State(head, tail));
+       state = new AtomicReference<State<T>>(new State(head, head));
     }
 
 
@@ -25,8 +24,16 @@ class NonBlockingQueue<T> implements Queue<T> {
         Node<T> newTail = new Node<>(elem);
         while (true) {
             State<T> oldState = state.get();
+            if
             newTail.next = oldState.tail();
-            State<T> newState = new State<>(oldState.head, newTail);
+            State<T> newState;
+            if(head.value == null) { // empty queue
+                Node<T> newHead = new Node<T>(elem);
+                newState = new State<>(newHead, newHead);
+            } else {
+                newState = new State<>(oldState.head, new Node<>(elem, oldState.tail));
+            }
+
             if(state.compareAndSet(oldState, newState)) {
                 break;
             }
