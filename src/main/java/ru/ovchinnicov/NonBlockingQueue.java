@@ -9,39 +9,26 @@ import java.util.concurrent.atomic.AtomicReference;
 class NonBlockingQueue<T> implements Queue<T> {
     // you can tune this according to contention
     private final static long BACK_OFF_TIME = 10;
-    private AtomicReference<Node<T>> head = new AtomicReference<>(new Node(null));
-    private AtomicReference<Node<T>> tail = new AtomicReference<>(head.get());
+    private AtomicReference<State<T>> state;
+    {
+       Node<T> head = new Node(null);
+       Node<T> tail = head.get();
+       state = new AtomicReference<State<T>>(new State(head, tail));
+    }
+
 
     /**
      * {@inheritDoc}
      */
     @Override
     public void add(T elem) throws InterruptedException {
-        if (elem == null) {
-            throw new IllegalArgumentException("Element must not be null!");
-        }
+        Node<T> newTail = new Node<>(elem);
         while (true) {
-            Node<T> newTail = new Node<>(elem);
-            Node<T> t = tail.get();
-            Node<T> n = t.next();
-            if (n == null) {
-                if (t.isEmpty()) {
-                    // queue is empty
-                    if (tail.compareAndSet(t, newTail)) {
-                        // set head after tail! so nothing can be removed from queue
-                        // before both tail and head set to new node
-                        if (!head.compareAndSet(t, newTail)) {
-                            assert false : "Add: couldn't change head from empty node";
-                        }
-                        return;
-                    }
-                } else if (t.casNext(null, newTail)) {
-                    // no other thread can cas tail now
-                    if (!tail.compareAndSet(t, newTail)) {
-                        assert false : "Add: couldn't set tail after old tail's next set";
-                    }
-                    return;
-                }
+            State<T> oldState = state.get();
+            newTail.next = oldState.tail();
+            State<T> newState = new State<>(oldState.head, newTail);
+            if(state.compareAndSet(oldState, newState)) {
+                break;
             }
             await();
         }
@@ -88,6 +75,16 @@ class NonBlockingQueue<T> implements Queue<T> {
             throw e;
         }
     }
+
+    private static class State<T> {
+        final Node<T> head;
+        final Node<T> tail;
+        State(Node<T> h, Node<T> t) {
+             head = h;
+             tail = t;
+        }
+    }
+
 
     private static class Node<T> {
         final AtomicReference<Node<T>> next = new AtomicReference<>();
